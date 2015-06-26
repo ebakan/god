@@ -8,6 +8,7 @@ module God
 
     def initialize
       self.log = '/dev/null'
+      @stdout_clone = STDOUT.clone
 
       @pid_file = nil
       @tracking_pid = true
@@ -111,22 +112,24 @@ module God
         applog(self, :error, "PID file directory '#{File.dirname(self.pid_file)}' is not writable by #{self.uid || Etc.getlogin}")
       end
 
-      # log dir must exist
-      if !File.exist?(File.dirname(self.log))
-        valid = false
-        applog(self, :error, "Log directory '#{File.dirname(self.log)}' does not exist")
-      end
-
-      # log file or dir must be writable
-      if File.exist?(self.log)
-        unless file_writable?(self.log)
+      if self.log != STDOUT
+        # log dir must exist
+        if !File.exist?(File.dirname(self.log))
           valid = false
-          applog(self, :error, "Log file '#{self.log}' exists but is not writable by #{self.uid || Etc.getlogin}")
+          applog(self, :error, "Log directory '#{File.dirname(self.log)}' does not exist")
         end
-      else
-        unless file_writable?(File.dirname(self.log))
-          valid = false
-          applog(self, :error, "Log directory '#{File.dirname(self.log)}' is not writable by #{self.uid || Etc.getlogin}")
+
+        # log file or dir must be writable
+        if File.exist?(self.log)
+          unless file_writable?(self.log)
+            valid = false
+            applog(self, :error, "Log file '#{self.log}' exists but is not writable by #{self.uid || Etc.getlogin}")
+          end
+        else
+          unless file_writable?(File.dirname(self.log))
+            valid = false
+            applog(self, :error, "Log directory '#{File.dirname(self.log)}' is not writable by #{self.uid || Etc.getlogin}")
+          end
         end
       end
 
@@ -316,7 +319,9 @@ module God
         Dir.chdir self.dir
         $0 = command
         STDIN.reopen "/dev/null"
-        if self.log_cmd
+        if self.log == STDOUT
+          STDOUT.reopen @stdout_clone
+        elsif self.log_cmd
           STDOUT.reopen IO.popen(self.log_cmd, "a")
         else
           STDOUT.reopen file_in_chroot(self.log), "a"
